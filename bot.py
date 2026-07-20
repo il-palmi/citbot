@@ -60,6 +60,27 @@ def admin_only():
     return commands.check(predicate)
 
 
+async def is_admin(ctx: commands.Context) -> bool:
+    """Come admin_only(), ma restituisce un bool invece di sollevare un'eccezione."""
+    if GUILD_ID is None or ADMIN_ROLE_ID is None:
+        return False
+    guild = ctx.bot.get_guild(GUILD_ID)
+    if guild is None:
+        return False
+    member = guild.get_member(ctx.author.id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(ctx.author.id)
+        except discord.NotFound:
+            return False
+    return any(role.id == ADMIN_ROLE_ID for role in member.roles)
+
+
+async def can_see_secrets(ctx: commands.Context) -> bool:
+    """Le citazioni segrete si vedono solo in DM e solo agli admin."""
+    return ctx.guild is None and await is_admin(ctx)
+
+
 def quote_embed(row) -> discord.Embed:
     embed = discord.Embed(
         description=f"“{row['text']}”",
@@ -68,14 +89,17 @@ def quote_embed(row) -> discord.Embed:
     embed.set_author(name=row["author"])
     if row["context"]:
         embed.add_field(name="Contesto", value=row["context"], inline=False)
-    embed.set_footer(text=f"Citazione #{row['id']}")
+    footer = f"Citazione #{row['id']}"
+    if row["secret"]:
+        footer += " · 🔒 Segreta"
+    embed.set_footer(text=footer)
     return embed
 
 
 # --------------------------------------------------------------------------- #
 # Comandi SOLO in DM: aggiungere / rimuovere
 # --------------------------------------------------------------------------- #
-@bot.command(name="add", aliases=["aggiungi"])
+@bot.command(name="add", aliases=["aggiungi", "asd"])
 @admin_only()
 @dm_only()
 async def add_quote(ctx: commands.Context, *, payload: str = ""):
@@ -92,6 +116,37 @@ async def add_quote(ctx: commands.Context, *, payload: str = ""):
     context = parts[2] if len(parts) >= 3 and parts[2] else None
     qid = await db.add(text, author, context, str(ctx.author))
     await ctx.send(f"✅ Citazione **#{qid}** aggiunta.")
+
+
+@bot.command(name="addsecret")
+@admin_only()
+@dm_only()
+async def add_secret_quote(ctx: commands.Context, *, payload: str = ""):
+    """Aggiunge una citazione segreta. Formato: testo | autore | contesto(opzionale)"""
+    parts = [p.strip() for p in payload.split("|")]
+    if len(parts) < 2 or not parts[0] or not parts[1]:
+        await ctx.send(
+            "Formato non valido.\n"
+            f"Usa: `{PREFIX}addsecret testo della citazione | autore | contesto (opzionale)`"
+        )
+        return
+
+    text, author = parts[0], parts[1]
+    context = parts[2] if len(parts) >= 3 and parts[2] else None
+    qid = await db.add(text, author, context, str(ctx.author), secret=True)
+    await ctx.send(f"🔒 Citazione segreta **#{qid}** aggiunta.")
+
+
+@bot.command(name="removesecret")
+@admin_only()
+@dm_only()
+async def remove_secret_quote(ctx: commands.Context, quote_id: int):
+    """Rimuove una citazione segreta per ID."""
+    ok = await db.remove_secret(quote_id)
+    if ok:
+        await ctx.send(f"🗑️ Citazione segreta **#{quote_id}** rimossa.")
+    else:
+        await ctx.send(f"Nessuna citazione segreta con ID **#{quote_id}**.")
 
 
 @bot.command(name="import", aliases=["importa"])
@@ -159,13 +214,39 @@ async def random_quote(ctx: commands.Context):
     await ctx.send(embed=quote_embed(row))
 
 
+@bot.command(name="randomsecret")
+@admin_only()
+@dm_only()
+async def random_secret_quote(ctx: commands.Context):
+    """Restituisce una citazione segreta a caso."""
+    row = await db.random_secret()
+    if row is None:
+        await ctx.send("Non c'è ancora nessuna citazione segreta.")
+        return
+    await ctx.send(embed=quote_embed(row))
+
+
+@bot.command(name="id")
+async def by_id(ctx: commands.Context, quote_id: int):
+    """Cerca una citazione per ID."""
+    row = await db.get(quote_id)
+    if row is None:
+        await ctx.send(f"Nessuna citazione con ID **#{quote_id}**.")
+        return
+    if row["secret"] and not await can_see_secrets(ctx):
+        await ctx.send("No questa è per pochi, mi dispiace, ahah xd.")
+        return
+    await ctx.send(embed=quote_embed(row))
+
+
 @bot.command(name="author", aliases=["autore"])
 async def by_author(ctx: commands.Context, *, author: str = ""):
     """Filtra le citazioni per autore."""
     if not author.strip():
         await ctx.send(f"Uso: `{PREFIX}author nome autore`")
         return
-    rows = await db.by_author(author.strip())
+    include_secret = await can_see_secrets(ctx)
+    rows = await db.by_author(author.strip(), include_secret=include_secret)
     if not rows:
         await ctx.send(f"Nessuna citazione trovata per autore «{author}».")
         return
@@ -178,7 +259,8 @@ async def search(ctx: commands.Context, *, keyword: str = ""):
     if not keyword.strip():
         await ctx.send(f"Uso: `{PREFIX}search parola chiave`")
         return
-    rows = await db.search(keyword.strip())
+    include_secret = await can_see_secrets(ctx)
+    rows = await db.search(keyword.strip(), include_secret=include_secret)
     if not rows:
         await ctx.send(f"Nessun risultato per «{keyword}».")
         return
@@ -207,10 +289,13 @@ async def _send_list(ctx: commands.Context, rows, title: str):
 async def help_cmd(ctx: commands.Context):
     embed = discord.Embed(title="📖 Bot Citazioni", color=discord.Color.green())
     embed.add_field(
-        name="Solo in chat privata (DM)",
+        name="Solo in chat privata (DM), solo admin",
         value=(
-            f"`{PREFIX}add testo | autore | contesto` — aggiunge una citazione\n"
+            f"`{PREFIX}add testo | autore | contesto` — aggiunge una citazione (alias `{PREFIX}asd`)\n"
             f"`{PREFIX}remove <id>` — rimuove una citazione\n"
+            f"`{PREFIX}addsecret testo | autore | contesto` — aggiunge una citazione segreta\n"
+            f"`{PREFIX}removesecret <id>` — rimuove una citazione segreta\n"
+            f"`{PREFIX}randomsecret` — una citazione segreta a caso\n"
             f"`{PREFIX}import` (con file JSON allegato) — importa citazioni in blocco\n"
             f"`{PREFIX}export` — esporta tutte le citazioni in un file JSON"
         ),
@@ -221,7 +306,8 @@ async def help_cmd(ctx: commands.Context):
         value=(
             f"`{PREFIX}random` — una citazione a caso\n"
             f"`{PREFIX}author <nome>` — filtra per autore\n"
-            f"`{PREFIX}search <parola>` — cerca per parola chiave"
+            f"`{PREFIX}search <parola>` — cerca per parola chiave\n"
+            f"`{PREFIX}id <id>` — cerca per ID"
         ),
         inline=False,
     )
