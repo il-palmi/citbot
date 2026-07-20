@@ -1,0 +1,14 @@
+services:
+  quote-bot:
+    build: .
+    container_name: quote-bot
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      BOT_PREFIX: ${BOT_PREFIX:-!}
+      DB_PATH: /data/quotes.db
+    volumes:
+      - quote-data:/data
+
+volumes:
+  quote-data:
