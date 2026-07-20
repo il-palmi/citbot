@@ -79,6 +79,19 @@ class QuoteDB:
             )
             return await cur.fetchall()
 
+    async def all(self) -> list[aiosqlite.Row]:
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute("SELECT * FROM quotes ORDER BY id")
+            return await cur.fetchall()
+
+    async def all_pairs(self) -> set[tuple[str, str]]:
+        """Coppie (text, author) già presenti, usate per evitare duplicati in import."""
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute("SELECT text, author FROM quotes")
+            rows = await cur.fetchall()
+            return {(t, a) for t, a in rows}
+
     async def count(self) -> int:
         async with aiosqlite.connect(self.path) as db:
             cur = await db.execute("SELECT COUNT(*) FROM quotes")

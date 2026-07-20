@@ -10,7 +10,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY bot.py db.py ./
+COPY bot.py db.py import_quotes.py export_quotes.py ./
 
 # Il database vive su un volume montato in /data
 VOLUME ["/data"]

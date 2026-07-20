@@ -6,9 +6,8 @@ services:
     environment:
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       BOT_PREFIX: ${BOT_PREFIX:-!}
+      GUILD_ID: ${GUILD_ID}
+      ADMIN_ROLE_ID: ${ADMIN_ROLE_ID}
       DB_PATH: /data/quotes.db
     volumes:
-      - quote-data:/data
-
-volumes:
-  quote-data:
+      - ./data:/data
