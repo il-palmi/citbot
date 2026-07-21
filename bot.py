@@ -541,11 +541,44 @@ def _weighted_distractor_combos(
     return combos
 
 
+class PlayAgainView(discord.ui.View):
+    """Chiede se giocare un altro round dopo aver risposto a !game."""
+
+    def __init__(self, player_id: int, channel: discord.abc.Messageable, timeout: float = 30):
+        super().__init__(timeout=timeout)
+        self.player_id = player_id
+        self.channel = channel
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.player_id
+
+    async def _finish(self, interaction: discord.Interaction, again: bool):
+        for child in self.children:
+            child.disabled = True
+        self.stop()
+        await interaction.response.edit_message(view=self)
+        if again:
+            await _play_game_round(self.channel, self.player_id)
+
+    @discord.ui.button(label="Un'altra? ✅", style=discord.ButtonStyle.success)
+    async def yes_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._finish(interaction, True)
+
+    @discord.ui.button(label="Basta così ✖️", style=discord.ButtonStyle.secondary)
+    async def no_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._finish(interaction, False)
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+
+
 class GameView(discord.ui.View):
-    def __init__(self, player_id: int, correct_author: str):
+    def __init__(self, player_id: int, correct_author: str, channel: discord.abc.Messageable):
         super().__init__(timeout=60)
         self.player_id = player_id
         self.correct_author = correct_author
+        self.channel = channel
         self.answered = False
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -573,6 +606,9 @@ class GameView(discord.ui.View):
                 view=self,
             )
 
+        again_view = PlayAgainView(self.player_id, self.channel)
+        await self.channel.send("Un'altra? 🎲", view=again_view)
+
     async def on_timeout(self):
         for child in self.children:
             child.disabled = True
@@ -587,13 +623,11 @@ class GameView(discord.ui.View):
         return button
 
 
-@bot.command(name="game", aliases=["gioco"])
-@dm_only()
-async def game(ctx: commands.Context):
-    """Indovina l'autore di una citazione a caso tra 4 proposti."""
+async def _play_game_round(channel: discord.abc.Messageable, player_id: int):
+    """Pesca una citazione a caso e propone 4 combinazioni di autori tra cui scegliere."""
     row = await db.random()
     if row is None:
-        await ctx.send("Non c'è ancora nessuna citazione.")
+        await channel.send("Non c'è ancora nessuna citazione.")
         return
 
     correct_authors = [a.strip() for a in row["author"].split("/") if a.strip()]
@@ -605,7 +639,7 @@ async def game(ctx: commands.Context):
     options = [correct_label] + ["/".join(combo) for combo in distractor_combos]
     random.shuffle(options)
 
-    view = GameView(ctx.author.id, correct_label)
+    view = GameView(player_id, correct_label, channel)
     for author in options:
         view.add_item(view.make_button(author))
 
@@ -614,7 +648,14 @@ async def game(ctx: commands.Context):
         color=discord.Color.blurple(),
     )
     embed.set_footer(text="Chi è l'autore?")
-    await ctx.send(embed=embed, view=view)
+    await channel.send(embed=embed, view=view)
+
+
+@bot.command(name="game", aliases=["gioco"])
+@dm_only()
+async def game(ctx: commands.Context):
+    """Indovina l'autore di una citazione a caso tra 4 proposti."""
+    await _play_game_round(ctx.channel, ctx.author.id)
 
 
 @bot.command(name="help", aliases=["aiuto"])
