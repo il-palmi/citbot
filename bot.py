@@ -276,30 +276,88 @@ async def stats(ctx: commands.Context):
     if not counts:
         await ctx.send("Non c'è ancora nessuna citazione.")
         return
-    embed = discord.Embed(title="📊 Citazioni per autore", color=discord.Color.blurple())
-    lines = [f"**{author}** — {n}" for author, n in counts[:50]]
-    embed.description = "\n".join(lines)
-    if len(counts) > 50:
-        embed.set_footer(text=f"Mostrati i primi 50 di {len(counts)} autori.")
-    await ctx.send(embed=embed)
+
+    page_size = 20
+    chunks = [counts[i : i + page_size] for i in range(0, len(counts), page_size)]
+    embeds = []
+    for idx, chunk in enumerate(chunks):
+        embed = discord.Embed(title="📊 Citazioni per autore", color=discord.Color.blurple())
+        embed.description = "\n".join(f"**{author}** — {n}" for author, n in chunk)
+        embed.set_footer(text=f"Pagina {idx + 1}/{len(chunks)} — {len(counts)} autori totali")
+        embeds.append(embed)
+    await _send_paginated(ctx, embeds)
 
 
 async def _send_list(ctx: commands.Context, rows, title: str):
-    """Invia una lista compatta; se è un solo risultato usa l'embed completo."""
+    """Invia una lista compatta, paginata se non ci sta tutta in un embed."""
     if len(rows) == 1:
         await ctx.send(embed=quote_embed(rows[0]))
         return
-    embed = discord.Embed(title=title, color=discord.Color.blurple())
-    for row in rows[:25]:
-        snippet = row["text"] if len(row["text"]) <= 200 else row["text"][:197] + "…"
-        embed.add_field(
-            name=f"#{row['id']} — {row['author']}",
-            value=f"“{snippet}”",
-            inline=False,
-        )
-    if len(rows) > 25:
-        embed.set_footer(text=f"Mostrati i primi 25 di {len(rows)} risultati.")
-    await ctx.send(embed=embed)
+
+    page_size = 10
+    chunks = [rows[i : i + page_size] for i in range(0, len(rows), page_size)]
+    embeds = []
+    for idx, chunk in enumerate(chunks):
+        embed = discord.Embed(title=title, color=discord.Color.blurple())
+        for row in chunk:
+            snippet = row["text"] if len(row["text"]) <= 200 else row["text"][:197] + "…"
+            embed.add_field(
+                name=f"#{row['id']} — {row['author']}",
+                value=f"“{snippet}”",
+                inline=False,
+            )
+        embed.set_footer(text=f"Pagina {idx + 1}/{len(chunks)} — {len(rows)} risultati totali")
+        embeds.append(embed)
+    await _send_paginated(ctx, embeds)
+
+
+class PaginatorView(discord.ui.View):
+    """Vista con pulsanti ◀ ▶ per scorrere una lista di embed già pronti."""
+
+    def __init__(self, embeds: list[discord.Embed], author_id: int):
+        super().__init__(timeout=120)
+        self.embeds = embeds
+        self.author_id = author_id
+        self.index = 0
+        self.message: discord.Message | None = None
+        self._update_buttons()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.author_id
+
+    def _update_buttons(self):
+        self.prev_button.disabled = self.index == 0
+        self.next_button.disabled = self.index == len(self.embeds) - 1
+
+    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.index -= 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.embeds[self.index], view=self)
+
+    @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.index += 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.embeds[self.index], view=self)
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+
+
+async def _send_paginated(ctx: commands.Context, embeds: list[discord.Embed]):
+    """Invia il primo embed; se ce n'è più di uno, aggiunge i pulsanti di navigazione."""
+    if len(embeds) == 1:
+        await ctx.send(embed=embeds[0])
+        return
+    view = PaginatorView(embeds, ctx.author.id)
+    view.message = await ctx.send(embed=embeds[0], view=view)
 
 
 def _weighted_sample_without_replacement(
