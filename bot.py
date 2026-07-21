@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import random
 
 import discord
 from discord.ext import commands
@@ -267,6 +268,22 @@ async def search(ctx: commands.Context, *, keyword: str = ""):
     await _send_list(ctx, rows, f"Risultati per «{keyword}»")
 
 
+@bot.command(name="stats", aliases=["statistiche"])
+async def stats(ctx: commands.Context):
+    """Conta quante citazioni ci sono per ogni autore (autori con '/' vengono separati)."""
+    include_secret = await can_see_secrets(ctx)
+    counts = await db.author_counts(include_secret=include_secret)
+    if not counts:
+        await ctx.send("Non c'è ancora nessuna citazione.")
+        return
+    embed = discord.Embed(title="📊 Citazioni per autore", color=discord.Color.blurple())
+    lines = [f"**{author}** — {n}" for author, n in counts[:50]]
+    embed.description = "\n".join(lines)
+    if len(counts) > 50:
+        embed.set_footer(text=f"Mostrati i primi 50 di {len(counts)} autori.")
+    await ctx.send(embed=embed)
+
+
 async def _send_list(ctx: commands.Context, rows, title: str):
     """Invia una lista compatta; se è un solo risultato usa l'embed completo."""
     if len(rows) == 1:
@@ -283,6 +300,123 @@ async def _send_list(ctx: commands.Context, rows, title: str):
     if len(rows) > 25:
         embed.set_footer(text=f"Mostrati i primi 25 di {len(rows)} risultati.")
     await ctx.send(embed=embed)
+
+
+def _weighted_sample_without_replacement(
+    names: list[str], weights: list[int], k: int
+) -> list[str]:
+    """Estrae fino a k nomi distinti con probabilità proporzionale al peso (stessa
+    distribuzione usata da !stats), senza ripetizioni."""
+    pool = list(zip(names, weights))
+    chosen: list[str] = []
+    while pool and len(chosen) < k:
+        pool_names = [a for a, _ in pool]
+        pool_weights = [w for _, w in pool]
+        pick = random.choices(pool_names, weights=pool_weights, k=1)[0]
+        chosen.append(pick)
+        pool = [(a, w) for a, w in pool if a != pick]
+    return chosen
+
+
+def _weighted_distractor_combos(
+    counts: list[tuple[str, int]], correct_authors: list[str], k: int, n: int
+) -> list[list[str]]:
+    """Genera fino a n combinazioni di k autori (senza autori ripetuti al loro interno),
+    campionati con la distribuzione pesata di !stats, evitando di riproporre lo stesso
+    gruppo di persone (né quello corretto né combinazioni già scelte)."""
+    names = [a for a, _ in counts]
+    weights = [c for _, c in counts]
+    seen = {frozenset(correct_authors)}
+    combos: list[list[str]] = []
+    max_attempts = n * 20 + 20
+    for _ in range(max_attempts):
+        if len(combos) >= n:
+            break
+        combo = _weighted_sample_without_replacement(names, weights, k)
+        if len(combo) < k:
+            break  # non ci sono abbastanza autori distinti per formare un'altra combinazione
+        group = frozenset(combo)
+        if group in seen:
+            continue
+        seen.add(group)
+        combos.append(combo)
+    return combos
+
+
+class GameView(discord.ui.View):
+    def __init__(self, player_id: int, correct_author: str):
+        super().__init__(timeout=60)
+        self.player_id = player_id
+        self.correct_author = correct_author
+        self.answered = False
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.player_id
+
+    async def _finish(self, interaction: discord.Interaction, chosen: str):
+        self.answered = True
+        for child in self.children:
+            child.disabled = True
+            if child.label == self.correct_author:
+                child.style = discord.ButtonStyle.success
+            elif child.label == chosen and chosen != self.correct_author:
+                child.style = discord.ButtonStyle.danger
+        self.stop()
+
+        if chosen == self.correct_author:
+            points = await db.add_point(str(self.player_id))
+            await interaction.response.edit_message(
+                content=f"✅ Esatto, l'autore era **{self.correct_author}**! Hai ora **{points}** punti.",
+                view=self,
+            )
+        else:
+            await interaction.response.edit_message(
+                content=f"❌ Sbagliato, l'autore corretto era **{self.correct_author}**.",
+                view=self,
+            )
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+
+    def make_button(self, author: str) -> discord.ui.Button:
+        button = discord.ui.Button(label=author, style=discord.ButtonStyle.primary)
+
+        async def callback(interaction: discord.Interaction):
+            await self._finish(interaction, author)
+
+        button.callback = callback
+        return button
+
+
+@bot.command(name="game", aliases=["gioco"])
+@dm_only()
+async def game(ctx: commands.Context):
+    """Indovina l'autore di una citazione a caso tra 4 proposti."""
+    row = await db.random()
+    if row is None:
+        await ctx.send("Non c'è ancora nessuna citazione.")
+        return
+
+    correct_authors = [a.strip() for a in row["author"].split("/") if a.strip()]
+    correct_label = "/".join(correct_authors)
+
+    counts = await db.author_counts()
+    distractor_combos = _weighted_distractor_combos(counts, correct_authors, len(correct_authors), 3)
+
+    options = [correct_label] + ["/".join(combo) for combo in distractor_combos]
+    random.shuffle(options)
+
+    view = GameView(ctx.author.id, correct_label)
+    for author in options:
+        view.add_item(view.make_button(author))
+
+    embed = discord.Embed(
+        description=f"“{row['text']}”",
+        color=discord.Color.blurple(),
+    )
+    embed.set_footer(text="Chi è l'autore?")
+    await ctx.send(embed=embed, view=view)
 
 
 @bot.command(name="help", aliases=["aiuto"])
@@ -307,7 +441,9 @@ async def help_cmd(ctx: commands.Context):
             f"`{PREFIX}random` — una citazione a caso\n"
             f"`{PREFIX}author <nome>` — filtra per autore\n"
             f"`{PREFIX}search <parola>` — cerca per parola chiave\n"
-            f"`{PREFIX}id <id>` — cerca per ID"
+            f"`{PREFIX}id <id>` — cerca per ID\n"
+            f"`{PREFIX}stats` — conta le citazioni per autore\n"
+            f"`{PREFIX}game` — indovina l'autore (solo in DM)"
         ),
         inline=False,
     )

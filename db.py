@@ -15,6 +15,11 @@ CREATE TABLE IF NOT EXISTS quotes (
     secret     INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS scores (
+    user_id TEXT PRIMARY KEY,
+    points  INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -126,6 +131,42 @@ class QuoteDB:
             cur = await db.execute("SELECT text, author FROM quotes")
             rows = await cur.fetchall()
             return {(t, a) for t, a in rows}
+
+    async def author_counts(self, include_secret: bool = False) -> list[tuple[str, int]]:
+        """Numero di citazioni per autore, separando gli autori multipli uniti da '/'."""
+        query = "SELECT author FROM quotes"
+        if not include_secret:
+            query += " WHERE secret = 0"
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute(query)
+            rows = await cur.fetchall()
+        counts: dict[str, int] = {}
+        for (author,) in rows:
+            for name in author.split("/"):
+                name = name.strip()
+                if not name:
+                    continue
+                counts[name] = counts.get(name, 0) + 1
+        return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0].lower()))
+
+    async def add_point(self, user_id: str) -> int:
+        """Aggiunge un punto all'utente e restituisce il nuovo totale."""
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                "INSERT INTO scores (user_id, points) VALUES (?, 1) "
+                "ON CONFLICT(user_id) DO UPDATE SET points = points + 1",
+                (user_id,),
+            )
+            await db.commit()
+            cur = await db.execute("SELECT points FROM scores WHERE user_id = ?", (user_id,))
+            (points,) = await cur.fetchone()
+            return points
+
+    async def get_score(self, user_id: str) -> int:
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute("SELECT points FROM scores WHERE user_id = ?", (user_id,))
+            row = await cur.fetchone()
+            return row[0] if row else 0
 
     async def count(self) -> int:
         async with aiosqlite.connect(self.path) as db:
