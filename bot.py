@@ -86,7 +86,7 @@ async def can_see_secrets(ctx: commands.Context) -> bool:
 
 def quote_embed(row) -> discord.Embed:
     embed = discord.Embed(
-        description=f"“{row['text']}”",
+        description=f"{row['text']}",
         color=discord.Color.blurple(),
     )
     embed.set_author(name=row["author"])
