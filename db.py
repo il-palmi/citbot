@@ -94,29 +94,25 @@ class QuoteDB:
             )
             return await cur.fetchone()
 
-    async def by_author(
-        self, author: str, include_secret: bool = False, limit: int = 25
-    ) -> list[aiosqlite.Row]:
+    async def by_author(self, author: str, include_secret: bool = False) -> list[aiosqlite.Row]:
         query = "SELECT * FROM quotes WHERE author LIKE ?"
         if not include_secret:
             query += " AND secret = 0"
-        query += " ORDER BY id LIMIT ?"
+        query += " ORDER BY id"
         async with aiosqlite.connect(self.path) as db:
             db.row_factory = aiosqlite.Row
-            cur = await db.execute(query, (f"%{author}%", limit))
+            cur = await db.execute(query, (f"%{author}%",))
             return await cur.fetchall()
 
-    async def search(
-        self, keyword: str, include_secret: bool = False, limit: int = 25
-    ) -> list[aiosqlite.Row]:
+    async def search(self, keyword: str, include_secret: bool = False) -> list[aiosqlite.Row]:
         like = f"%{keyword}%"
         query = "SELECT * FROM quotes WHERE (text LIKE ? OR author LIKE ? OR context LIKE ?)"
         if not include_secret:
             query += " AND secret = 0"
-        query += " ORDER BY id LIMIT ?"
+        query += " ORDER BY id"
         async with aiosqlite.connect(self.path) as db:
             db.row_factory = aiosqlite.Row
-            cur = await db.execute(query, (like, like, like, limit))
+            cur = await db.execute(query, (like, like, like))
             return await cur.fetchall()
 
     async def all(self) -> list[aiosqlite.Row]:
