@@ -1,4 +1,5 @@
 import asyncio
+import difflib
 import io
 import json
 import os
@@ -98,6 +99,105 @@ def quote_embed(row) -> discord.Embed:
     return embed
 
 
+class SimilarAuthorView(discord.ui.View):
+    """Chiede se un autore simile a uno già in DB sia la stessa persona o uno nuovo."""
+
+    def __init__(self, requester_id: int, candidate: str, timeout: float = 60):
+        super().__init__(timeout=timeout)
+        self.requester_id = requester_id
+        self.candidate = candidate
+        self.result: str | None = None  # "existing" oppure "new"
+        self.event = asyncio.Event()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.requester_id
+
+    def _finish(self, result: str):
+        self.result = result
+        for child in self.children:
+            child.disabled = True
+        self.event.set()
+        self.stop()
+
+    @discord.ui.button(label="È la stessa persona", style=discord.ButtonStyle.success)
+    async def existing_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self._finish("existing")
+        await interaction.response.edit_message(view=self)
+
+    @discord.ui.button(label="È un autore nuovo", style=discord.ButtonStyle.secondary)
+    async def new_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self._finish("new")
+        await interaction.response.edit_message(view=self)
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        self.event.set()
+
+
+LEET_TRANSLATION = str.maketrans({
+    "4": "a",
+    "3": "e",
+    "1": "i",
+    "0": "o",
+    "5": "s",
+    "7": "t",
+    "8": "b",
+    "@": "a",
+    "$": "s",
+})
+
+
+def _normalize_for_compare(name: str) -> str:
+    """Minuscolo + sostituzione dei numeri/simboli in stile leetspeak (es. '4'→'a'),
+    usata solo per il confronto, mai per il valore salvato."""
+    return name.lower().translate(LEET_TRANSLATION)
+
+
+async def _resolve_author(ctx: commands.Context, name: str, existing_authors: list[str]) -> str:
+    """Confronta un autore con quelli già in DB: se coincide a meno di
+    maiuscole/minuscole (o leetspeak, es. 'M4rio' vs 'Mario') usa la grafia già
+    presente in DB; se è molto simile ma non identico chiede conferma all'utente;
+    altrimenti lo considera un autore nuovo."""
+    normalized_name = _normalize_for_compare(name)
+    for existing in existing_authors:
+        if _normalize_for_compare(existing) == normalized_name:
+            return existing
+
+    normalized_to_existing = {_normalize_for_compare(a): a for a in existing_authors}
+    close = difflib.get_close_matches(
+        normalized_name, list(normalized_to_existing.keys()), n=1, cutoff=0.75
+    )
+    if not close:
+        return name
+
+    candidate = normalized_to_existing[close[0]]
+    view = SimilarAuthorView(ctx.author.id, candidate)
+    await ctx.send(
+        f"L'autore **{name}** è molto simile a uno già presente: **{candidate}**. "
+        "È la stessa persona o un autore nuovo?",
+        view=view,
+    )
+    await view.event.wait()
+    if view.result == "existing":
+        return candidate
+    return name
+
+
+async def _resolve_authors_field(ctx: commands.Context, author_field: str) -> str:
+    """Applica _resolve_author a ciascun autore separato da '/'."""
+    counts = await db.author_counts(include_secret=True)
+    existing_authors = [a for a, _ in counts]
+    parts = [a.strip() for a in author_field.split("/") if a.strip()]
+    resolved = []
+    for part in parts:
+        resolved_name = await _resolve_author(ctx, part, existing_authors)
+        resolved.append(resolved_name)
+        if resolved_name not in existing_authors:
+            existing_authors.append(resolved_name)
+    return "/".join(resolved)
+
+
 # --------------------------------------------------------------------------- #
 # Comandi SOLO in DM: aggiungere / rimuovere
 # --------------------------------------------------------------------------- #
@@ -116,6 +216,7 @@ async def add_quote(ctx: commands.Context, *, payload: str = ""):
 
     text, author = parts[0], parts[1]
     context = parts[2] if len(parts) >= 3 and parts[2] else None
+    author = await _resolve_authors_field(ctx, author)
     qid = await db.add(text, author, context, str(ctx.author))
     await ctx.send(f"✅ Citazione **#{qid}** aggiunta.")
 
@@ -135,6 +236,7 @@ async def add_secret_quote(ctx: commands.Context, *, payload: str = ""):
 
     text, author = parts[0], parts[1]
     context = parts[2] if len(parts) >= 3 and parts[2] else None
+    author = await _resolve_authors_field(ctx, author)
     qid = await db.add(text, author, context, str(ctx.author), secret=True)
     await ctx.send(f"🔒 Citazione segreta **#{qid}** aggiunta.")
 
@@ -647,6 +749,8 @@ async def _play_game_round(channel: discord.abc.Messageable, player_id: int):
         description=f"“{row['text']}”",
         color=discord.Color.blurple(),
     )
+    if row["context"]:
+        embed.add_field(name="Contesto", value=row["context"], inline=False)
     embed.set_footer(text="Chi è l'autore?")
     await channel.send(embed=embed, view=view)
 
