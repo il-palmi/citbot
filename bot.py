@@ -662,7 +662,7 @@ class PlayAgainView(discord.ui.View):
         if again:
             await _play_game_round(self.channel, self.player_id)
 
-    @discord.ui.button(label="Un'altra? ✅", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Un'altra ✅", style=discord.ButtonStyle.success)
     async def yes_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._finish(interaction, True)
 
