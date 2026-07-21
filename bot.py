@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import os
@@ -188,6 +189,145 @@ async def export_quotes(ctx: commands.Context):
         f"📤 Esportate **{len(entries)}** citazioni.",
         file=discord.File(io.BytesIO(data), filename="quotes_export.json"),
     )
+
+
+class EditStepView(discord.ui.View):
+    """Pulsanti opzionali affiancati alla richiesta testuale di uno step di !edit."""
+
+    def __init__(self, author_id: int, allow_remove: bool = False, timeout: float = 120):
+        super().__init__(timeout=timeout)
+        self.author_id = author_id
+        self.result: str | None = None  # "keep", "remove" oppure "stop"
+        self.message: discord.Message | None = None
+        self.event = asyncio.Event()
+
+        if allow_remove:
+            remove_button = discord.ui.Button(
+                label="Rimuovi contesto", style=discord.ButtonStyle.danger
+            )
+            remove_button.callback = self._make_callback("remove")
+            self.add_item(remove_button)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.author_id
+
+    def _make_callback(self, result: str):
+        async def callback(interaction: discord.Interaction):
+            self.result = result
+            for child in self.children:
+                child.disabled = True
+            await interaction.response.edit_message(view=self)
+            self.event.set()
+            self.stop()
+
+        return callback
+
+    @discord.ui.button(label="Lascia invariato ⏭️", style=discord.ButtonStyle.secondary)
+    async def keep_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._make_callback("keep")(interaction)
+
+    @discord.ui.button(label="Annulla ✖️", style=discord.ButtonStyle.danger)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._make_callback("stop")(interaction)
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+        self.event.set()
+
+
+@bot.command(name="edit", aliases=["modifica"])
+@admin_only()
+@dm_only()
+async def edit_quote(ctx: commands.Context, quote_id: int):
+    """Modifica autore, testo e contesto di una citazione, uno step alla volta."""
+    row = await db.get(quote_id)
+    if row is None:
+        await ctx.send(f"Nessuna citazione con ID **#{quote_id}**.")
+        return
+
+    def check(m: discord.Message) -> bool:
+        return m.author.id == ctx.author.id and m.channel.id == ctx.channel.id
+
+    async def ask(prompt: str, allow_remove: bool = False) -> tuple[str, str | None]:
+        """Restituisce (azione, valore). Azione: 'stop', 'timeout', 'keep', 'remove', 'value'.
+        Il testo digitato conta solo come nuovo valore letterale: le azioni si scelgono
+        esclusivamente con i pulsanti."""
+        view = EditStepView(ctx.author.id, allow_remove=allow_remove)
+        view.message = await ctx.send(prompt, view=view)
+
+        msg_task = asyncio.create_task(bot.wait_for("message", check=check))
+        event_task = asyncio.create_task(view.event.wait())
+        done, pending = await asyncio.wait(
+            {msg_task, event_task}, timeout=125, return_when=asyncio.FIRST_COMPLETED
+        )
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+
+        if msg_task in done:
+            if not view.is_finished():
+                view.stop()
+                for child in view.children:
+                    child.disabled = True
+                try:
+                    await view.message.edit(view=view)
+                except discord.HTTPException:
+                    pass
+            return "value", msg_task.result().content.strip()
+
+        if view.result == "keep":
+            return "keep", None
+        if view.result == "remove":
+            return "remove", None
+        if view.result == "stop":
+            await ctx.send("Modifica annullata.")
+            return "stop", None
+        await ctx.send("⌛ Tempo scaduto, modifica annullata.")
+        return "timeout", None
+
+    await ctx.send(embed=quote_embed(row))
+    await ctx.send(
+        "Stai modificando questa citazione. Per ogni campo scrivi il nuovo valore, "
+        "oppure usa i pulsanti qui sotto."
+    )
+
+    action, reply = await ask(f"**Autore attuale:** {row['author']}\nNuovo autore?")
+    if action in ("stop", "timeout"):
+        return
+    new_author = None if action == "keep" else reply
+
+    action, reply = await ask(f"**Testo attuale:** {row['text']}\nNuovo testo?")
+    if action in ("stop", "timeout"):
+        return
+    new_text = None if action == "keep" else reply
+
+    current_context = row["context"] or "_nessuno_"
+    action, reply = await ask(
+        f"**Contesto attuale:** {current_context}\n"
+        "Nuovo contesto? Scrivilo, oppure usa i pulsanti qui sotto.",
+        allow_remove=True,
+    )
+    if action in ("stop", "timeout"):
+        return
+    if action == "keep":
+        new_context = QuoteDB._UNSET
+    elif action == "remove":
+        new_context = None
+    else:
+        new_context = reply
+
+    ok = await db.update(quote_id, text=new_text, author=new_author, context=new_context)
+    if ok:
+        updated = await db.get(quote_id)
+        await ctx.send("✅ Citazione aggiornata:", embed=quote_embed(updated))
+    else:
+        await ctx.send("Nessuna modifica effettuata.")
 
 
 @bot.command(name="remove", aliases=["rimuovi", "del"])
@@ -485,6 +625,7 @@ async def help_cmd(ctx: commands.Context):
         value=(
             f"`{PREFIX}add testo | autore | contesto` — aggiunge una citazione (alias `{PREFIX}asd`)\n"
             f"`{PREFIX}remove <id>` — rimuove una citazione\n"
+            f"`{PREFIX}edit <id>` — modifica autore/testo/contesto passo passo (alias `{PREFIX}modifica`)\n"
             f"`{PREFIX}addsecret testo | autore | contesto` — aggiunge una citazione segreta\n"
             f"`{PREFIX}removesecret <id>` — rimuove una citazione segreta\n"
             f"`{PREFIX}randomsecret` — una citazione segreta a caso\n"

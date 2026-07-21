@@ -55,6 +55,38 @@ class QuoteDB:
             await db.commit()
             return cur.lastrowid
 
+    _UNSET = object()
+
+    async def update(
+        self,
+        quote_id: int,
+        text: str | None = None,
+        author: str | None = None,
+        context=_UNSET,
+    ) -> bool:
+        """Aggiorna i campi indicati. Passare context=None per rimuoverlo esplicitamente;
+        lasciare il default per non toccarlo."""
+        fields = []
+        values = []
+        if text is not None:
+            fields.append("text = ?")
+            values.append(text)
+        if author is not None:
+            fields.append("author = ?")
+            values.append(author)
+        if context is not self._UNSET:
+            fields.append("context = ?")
+            values.append(context)
+        if not fields:
+            return False
+        values.append(quote_id)
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute(
+                f"UPDATE quotes SET {', '.join(fields)} WHERE id = ?", values
+            )
+            await db.commit()
+            return cur.rowcount > 0
+
     async def remove(self, quote_id: int) -> bool:
         async with aiosqlite.connect(self.path) as db:
             cur = await db.execute("DELETE FROM quotes WHERE id = ?", (quote_id,))
