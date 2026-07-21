@@ -32,7 +32,7 @@ class QuoteDB:
     async def init(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.path) as db:
-            await db.execute(SCHEMA)
+            await db.executescript(SCHEMA)
             cur = await db.execute("PRAGMA table_info(quotes)")
             columns = {row[1] for row in await cur.fetchall()}
             if "secret" not in columns:
