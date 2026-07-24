@@ -543,9 +543,13 @@ async def _send_list(ctx: commands.Context, rows, title: str):
         embed = discord.Embed(title=title, color=discord.Color.blurple())
         for row in chunk:
             snippet = row["text"] if len(row["text"]) <= 200 else row["text"][:197] + "…"
+            if row["context"]:
+                name_field_formatted = f"#{row['id']} — {row['author']} {row['context']}"
+            else:
+                name_field_formatted = f"#{row['id']} — {row['author']}"
             embed.add_field(
-                name=f"#{row['id']} — {row['author']}",
-                value=f"“{snippet}”",
+                name=name_field_formatted,
+                value=f"{snippet}",
                 inline=False,
             )
         embed.set_footer(text=f"Pagina {idx + 1}/{len(chunks)} — {len(rows)} risultati totali")
