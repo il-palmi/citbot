@@ -27,8 +27,15 @@ async def export_to_file(path: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Esporta le citazioni in un file JSON.")
-    parser.add_argument("file", nargs="?", default="quotes_export.json", help="Percorso del file JSON di output")
+    parser = argparse.ArgumentParser(
+        description="Esporta le citazioni in un file JSON."
+    )
+    parser.add_argument(
+        "file",
+        nargs="?",
+        default="quotes_export.json",
+        help="Percorso del file JSON di output",
+    )
     args = parser.parse_args()
     asyncio.run(export_to_file(args.file))
 

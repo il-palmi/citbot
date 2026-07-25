@@ -27,7 +27,9 @@ def rows_to_entries(rows) -> list:
     return entries
 
 
-async def import_entries(db: QuoteDB, entries: list, added_by: str = "import") -> tuple[int, int]:
+async def import_entries(
+    db: QuoteDB, entries: list, added_by: str = "import"
+) -> tuple[int, int]:
     """Importa una lista di entry {quote, author, context?} già parsate. Ritorna (added, skipped)."""
     await db.init()
     existing = await db.all_pairs()
@@ -36,7 +38,7 @@ async def import_entries(db: QuoteDB, entries: list, added_by: str = "import") -
     for entry in entries:
         text = (entry.get("quote") or "").strip()
         author = (entry.get("author") or "").strip()
-        context = (entry.get("context") or None)
+        context = entry.get("context") or None
         if isinstance(context, str):
             context = context.strip() or None
 
@@ -61,7 +63,9 @@ async def import_from_file(path: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Importa citazioni da un file JSON.")
-    parser.add_argument("file", nargs="?", default="quotes.json", help="Percorso del file JSON")
+    parser.add_argument(
+        "file", nargs="?", default="quotes.json", help="Percorso del file JSON"
+    )
     args = parser.parse_args()
     asyncio.run(import_from_file(args.file))
 

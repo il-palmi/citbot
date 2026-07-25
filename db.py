@@ -36,7 +36,9 @@ class QuoteDB:
             cur = await db.execute("PRAGMA table_info(quotes)")
             columns = {row[1] for row in await cur.fetchall()}
             if "secret" not in columns:
-                await db.execute("ALTER TABLE quotes ADD COLUMN secret INTEGER NOT NULL DEFAULT 0")
+                await db.execute(
+                    "ALTER TABLE quotes ADD COLUMN secret INTEGER NOT NULL DEFAULT 0"
+                )
             await db.commit()
 
     async def add(
@@ -126,7 +128,9 @@ class QuoteDB:
             )
             return await cur.fetchone()
 
-    async def by_author(self, author: str, include_secret: bool = False) -> list[aiosqlite.Row]:
+    async def by_author(
+        self, author: str, include_secret: bool = False
+    ) -> list[aiosqlite.Row]:
         query = "SELECT * FROM quotes WHERE author LIKE ?"
         if not include_secret:
             query += " AND secret = 0"
@@ -136,7 +140,9 @@ class QuoteDB:
             cur = await db.execute(query, (f"%{author}%",))
             return await cur.fetchall()
 
-    async def search(self, keyword: str, include_secret: bool = False) -> list[aiosqlite.Row]:
+    async def search(
+        self, keyword: str, include_secret: bool = False
+    ) -> list[aiosqlite.Row]:
         like = f"%{keyword}%"
         query = "SELECT * FROM quotes WHERE (text LIKE ? OR author LIKE ? OR context LIKE ?)"
         if not include_secret:
@@ -160,7 +166,9 @@ class QuoteDB:
             rows = await cur.fetchall()
             return {(t, a) for t, a in rows}
 
-    async def author_counts(self, include_secret: bool = False) -> list[tuple[str, int]]:
+    async def author_counts(
+        self, include_secret: bool = False
+    ) -> list[tuple[str, int]]:
         """Numero di citazioni per autore, separando gli autori multipli uniti da '/'."""
         query = "SELECT author FROM quotes"
         if not include_secret:
@@ -186,13 +194,17 @@ class QuoteDB:
                 (user_id,),
             )
             await db.commit()
-            cur = await db.execute("SELECT points FROM scores WHERE user_id = ?", (user_id,))
+            cur = await db.execute(
+                "SELECT points FROM scores WHERE user_id = ?", (user_id,)
+            )
             (points,) = await cur.fetchone()
             return points
 
     async def get_score(self, user_id: str) -> int:
         async with aiosqlite.connect(self.path) as db:
-            cur = await db.execute("SELECT points FROM scores WHERE user_id = ?", (user_id,))
+            cur = await db.execute(
+                "SELECT points FROM scores WHERE user_id = ?", (user_id,)
+            )
             row = await cur.fetchone()
             return row[0] if row else 0
 

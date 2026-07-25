@@ -91,7 +91,7 @@ def quote_embed(row) -> discord.Embed:
     # )
     # embed.set_author(name=row["author"])
     embed = discord.Embed(
-        name=format_name_and_context(row['author'], row['context']),
+        name=format_name_and_context(row["author"], row["context"]),
         value=f"{row['text']}",
         inline=False,
         color=discord.Color.blurple(),
@@ -133,12 +133,16 @@ class SimilarAuthorView(discord.ui.View):
         self.stop()
 
     @discord.ui.button(label="È la stessa persona", style=discord.ButtonStyle.success)
-    async def existing_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def existing_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         self._finish("existing")
         await interaction.response.edit_message(view=self)
 
     @discord.ui.button(label="È un autore nuovo", style=discord.ButtonStyle.secondary)
-    async def new_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def new_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         self._finish("new")
         await interaction.response.edit_message(view=self)
 
@@ -148,17 +152,19 @@ class SimilarAuthorView(discord.ui.View):
         self.event.set()
 
 
-LEET_TRANSLATION = str.maketrans({
-    "4": "a",
-    "3": "e",
-    "1": "i",
-    "0": "o",
-    "5": "s",
-    "7": "t",
-    "8": "b",
-    "@": "a",
-    "$": "s",
-})
+LEET_TRANSLATION = str.maketrans(
+    {
+        "4": "a",
+        "3": "e",
+        "1": "i",
+        "0": "o",
+        "5": "s",
+        "7": "t",
+        "8": "b",
+        "@": "a",
+        "$": "s",
+    }
+)
 
 
 def _normalize_for_compare(name: str) -> str:
@@ -167,7 +173,9 @@ def _normalize_for_compare(name: str) -> str:
     return name.lower().translate(LEET_TRANSLATION)
 
 
-async def _resolve_author(ctx: commands.Context, name: str, existing_authors: list[str]) -> str:
+async def _resolve_author(
+    ctx: commands.Context, name: str, existing_authors: list[str]
+) -> str:
     """Confronta un autore con quelli già in DB: se coincide a meno di
     maiuscole/minuscole (o leetspeak, es. 'M4rio' vs 'Mario') usa la grafia già
     presente in DB; se è molto simile ma non identico chiede conferma all'utente;
@@ -309,7 +317,9 @@ async def export_quotes(ctx: commands.Context):
 class EditStepView(discord.ui.View):
     """Pulsanti opzionali affiancati alla richiesta testuale di uno step di !edit."""
 
-    def __init__(self, author_id: int, allow_remove: bool = False, timeout: float = 120):
+    def __init__(
+        self, author_id: int, allow_remove: bool = False, timeout: float = 120
+    ):
         super().__init__(timeout=timeout)
         self.author_id = author_id
         self.result: str | None = None  # "keep", "remove" oppure "stop"
@@ -338,11 +348,15 @@ class EditStepView(discord.ui.View):
         return callback
 
     @discord.ui.button(label="Lascia invariato ⏭️", style=discord.ButtonStyle.secondary)
-    async def keep_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def keep_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         await self._make_callback("keep")(interaction)
 
     @discord.ui.button(label="Annulla ✖️", style=discord.ButtonStyle.danger)
-    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def cancel_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         await self._make_callback("stop")(interaction)
 
     async def on_timeout(self):
@@ -437,7 +451,9 @@ async def edit_quote(ctx: commands.Context, quote_id: int):
     else:
         new_context = reply
 
-    ok = await db.update(quote_id, text=new_text, author=new_author, context=new_context)
+    ok = await db.update(
+        quote_id, text=new_text, author=new_author, context=new_context
+    )
     if ok:
         updated = await db.get(quote_id)
         await ctx.send("✅ Citazione aggiornata:", embed=quote_embed(updated))
@@ -536,9 +552,13 @@ async def stats(ctx: commands.Context):
     chunks = [counts[i : i + page_size] for i in range(0, len(counts), page_size)]
     embeds = []
     for idx, chunk in enumerate(chunks):
-        embed = discord.Embed(title="📊 Citazioni per autore", color=discord.Color.blurple())
+        embed = discord.Embed(
+            title="📊 Citazioni per autore", color=discord.Color.blurple()
+        )
         embed.description = "\n".join(f"**{author}** — {n}" for author, n in chunk)
-        embed.set_footer(text=f"Pagina {idx + 1}/{len(chunks)} — {len(counts)} autori totali")
+        embed.set_footer(
+            text=f"Pagina {idx + 1}/{len(chunks)} — {len(counts)} autori totali"
+        )
         embeds.append(embed)
     await _send_paginated(ctx, embeds)
 
@@ -555,13 +575,17 @@ async def _send_list(ctx: commands.Context, rows, title: str):
     for idx, chunk in enumerate(chunks):
         embed = discord.Embed(title=title, color=discord.Color.blurple())
         for row in chunk:
-            snippet = row["text"] if len(row["text"]) <= 200 else row["text"][:197] + "…"
+            snippet = (
+                row["text"] if len(row["text"]) <= 200 else row["text"][:197] + "…"
+            )
             embed.add_field(
                 name=f"#{row['id']} — {format_name_and_context(row['author'], row['context'])}",
                 value=f"{snippet}",
                 inline=False,
             )
-        embed.set_footer(text=f"Pagina {idx + 1}/{len(chunks)} — {len(rows)} risultati totali")
+        embed.set_footer(
+            text=f"Pagina {idx + 1}/{len(chunks)} — {len(rows)} risultati totali"
+        )
         embeds.append(embed)
     await _send_paginated(ctx, embeds)
 
@@ -585,16 +609,24 @@ class PaginatorView(discord.ui.View):
         self.next_button.disabled = self.index == len(self.embeds) - 1
 
     @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
-    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def prev_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         self.index -= 1
         self._update_buttons()
-        await interaction.response.edit_message(embed=self.embeds[self.index], view=self)
+        await interaction.response.edit_message(
+            embed=self.embeds[self.index], view=self
+        )
 
     @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary)
-    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def next_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         self.index += 1
         self._update_buttons()
-        await interaction.response.edit_message(embed=self.embeds[self.index], view=self)
+        await interaction.response.edit_message(
+            embed=self.embeds[self.index], view=self
+        )
 
     async def on_timeout(self):
         for child in self.children:
@@ -659,7 +691,9 @@ def _weighted_distractor_combos(
 class PlayAgainView(discord.ui.View):
     """Chiede se giocare un altro round dopo aver risposto a !game."""
 
-    def __init__(self, player_id: int, channel: discord.abc.Messageable, timeout: float = 30):
+    def __init__(
+        self, player_id: int, channel: discord.abc.Messageable, timeout: float = 30
+    ):
         super().__init__(timeout=timeout)
         self.player_id = player_id
         self.channel = channel
@@ -676,11 +710,15 @@ class PlayAgainView(discord.ui.View):
             await _play_game_round(self.channel, self.player_id)
 
     @discord.ui.button(label="Un'altra ✅", style=discord.ButtonStyle.success)
-    async def yes_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def yes_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         await self._finish(interaction, True)
 
     @discord.ui.button(label="Basta così ✖️", style=discord.ButtonStyle.secondary)
-    async def no_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def no_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         await self._finish(interaction, False)
 
     async def on_timeout(self):
@@ -689,7 +727,9 @@ class PlayAgainView(discord.ui.View):
 
 
 class GameView(discord.ui.View):
-    def __init__(self, player_id: int, correct_author: str, channel: discord.abc.Messageable):
+    def __init__(
+        self, player_id: int, correct_author: str, channel: discord.abc.Messageable
+    ):
         super().__init__(timeout=60)
         self.player_id = player_id
         self.correct_author = correct_author
@@ -749,7 +789,9 @@ async def _play_game_round(channel: discord.abc.Messageable, player_id: int):
     correct_label = "/".join(correct_authors)
 
     counts = await db.author_counts()
-    distractor_combos = _weighted_distractor_combos(counts, correct_authors, len(correct_authors), 3)
+    distractor_combos = _weighted_distractor_combos(
+        counts, correct_authors, len(correct_authors), 3
+    )
 
     options = [correct_label] + ["/".join(combo) for combo in distractor_combos]
     random.shuffle(options)
@@ -822,9 +864,14 @@ async def on_command_error(ctx: commands.Context, error):
             "non sui canali del server.",
             delete_after=10,
         )
-    elif isinstance(error, commands.CheckFailure) and str(error) == "admin_missing_role":
+    elif (
+        isinstance(error, commands.CheckFailure) and str(error) == "admin_missing_role"
+    ):
         await ctx.send("Non hai il ruolo necessario per usare questo comando.")
-    elif isinstance(error, commands.CheckFailure) and str(error) == "admin_not_configured":
+    elif (
+        isinstance(error, commands.CheckFailure)
+        and str(error) == "admin_not_configured"
+    ):
         await ctx.send(
             "Comando non disponibile: il bot non ha GUILD_ID/ADMIN_ROLE_ID configurati."
         )
