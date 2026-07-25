@@ -85,18 +85,31 @@ async def can_see_secrets(ctx: commands.Context) -> bool:
 
 
 def quote_embed(row) -> discord.Embed:
+    # embed = discord.Embed(
+    #     description=f"{row['text']}",
+    #     color=discord.Color.blurple(),
+    # )
+    # embed.set_author(name=row["author"])
     embed = discord.Embed(
-        description=f"{row['text']}",
+        name=format_name_and_context(row['author'], row['context']),
+        value=f"{row['text']}",
+        inline=False,
         color=discord.Color.blurple(),
     )
-    embed.set_author(name=row["author"])
-    if row["context"]:
-        embed.add_field(name="Contesto", value=row["context"], inline=False)
+    # if row["context"]:
+    #     embed.add_field(name="Contesto", value=row["context"], inline=False)
     footer = f"Citazione #{row['id']}"
     if row["secret"]:
         footer += " · 🔒 Segreta"
     embed.set_footer(text=footer)
     return embed
+
+
+def format_name_and_context(author: str, context) -> str:
+    if context:
+        return f"{row['author']} {row['context']}"
+    else:
+        return f"{row['author']}"
 
 
 class SimilarAuthorView(discord.ui.View):
@@ -543,12 +556,8 @@ async def _send_list(ctx: commands.Context, rows, title: str):
         embed = discord.Embed(title=title, color=discord.Color.blurple())
         for row in chunk:
             snippet = row["text"] if len(row["text"]) <= 200 else row["text"][:197] + "…"
-            if row["context"]:
-                name_field_formatted = f"#{row['id']} — {row['author']} {row['context']}"
-            else:
-                name_field_formatted = f"#{row['id']} — {row['author']}"
             embed.add_field(
-                name=name_field_formatted,
+                name=f"#{row['id']} — {format_name_and_context(row['author'], row['context'])}",
                 value=f"{snippet}",
                 inline=False,
             )
