@@ -84,15 +84,18 @@ async def can_see_secrets(ctx: commands.Context) -> bool:
     return ctx.guild is None and await is_admin(ctx)
 
 
+def format_author(author: str, context: str | None) -> str:
+    if context:
+        return f"{author} — {context}"
+    return author
+
+
 def quote_embed(row) -> discord.Embed:
+    author = format_author(row["author"], row["context"])
     embed = discord.Embed(
-        description=f"“{row['text']}”",
+        description=f"**{author}**\n“{row['text']}”",
         color=discord.Color.blurple(),
     )
-    author = row["author"]
-    if row["context"]:
-        author += f" — {row['context']}"
-    embed.set_author(name=author)
     footer = f"Citazione #{row['id']}"
     if row["secret"]:
         footer += " · 🔒 Segreta"
@@ -793,11 +796,9 @@ async def _play_game_round(channel: discord.abc.Messageable, player_id: int):
         view.add_item(view.make_button(author))
 
     embed = discord.Embed(
-        description=f"“{row['text']}”",
+        description=f"**{format_author(row['author'], row['context'])}**\n“{row['text']}”",
         color=discord.Color.blurple(),
     )
-    if row["context"]:
-        embed.add_field(name="Contesto", value=row["context"], inline=False)
     embed.set_footer(text="Chi è l'autore?")
     await channel.send(embed=embed, view=view)
 
