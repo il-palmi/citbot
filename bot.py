@@ -1,5 +1,6 @@
 import asyncio
 import difflib
+from datetime import datetime
 import io
 import json
 import os
@@ -90,10 +91,31 @@ def format_author(author: str, context: str | None) -> str:
     return author
 
 
+def format_created_at(created_at) -> str:
+    if not created_at:
+        return "N/D"
+    if isinstance(created_at, datetime):
+        value = created_at
+    elif isinstance(created_at, str):
+        try:
+            value = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        except ValueError:
+            return "N/D"
+    else:
+        return "N/D"
+    return f"{value:%d/%m/%Y %H:%M} UTC"
+
+
 def quote_embed(row) -> discord.Embed:
-    author = format_author(row["author"], row["context"])
+    author = f"**{row['author']}**"
+    if row["context"]:
+        author += f" — {row['context']}"
     embed = discord.Embed(
-        description=f"**{author}**\n“{row['text']}”",
+        description=(
+            f"{author}\n"
+            f"“{row['text']}”\n\n"
+            f"*Creata: {format_created_at(row['created_at'])}*"
+        ),
         color=discord.Color.blurple(),
     )
     footer = f"Citazione #{row['id']}"
@@ -570,9 +592,8 @@ async def _send_list(ctx: commands.Context, rows, title: str):
                 row["text"] if len(row["text"]) <= 200 else row["text"][:197] + "…"
             )
             value = f"“{snippet}”"
-            author = row["author"]
-            if row["context"]:
-                author += f" — {row['context']}"
+            author = format_author(row["author"], row["context"])
+            value += f"\n\n*Creata: {format_created_at(row['created_at'])}*"
             embed.add_field(
                 name=f"#{row['id']} — {author}",
                 value=value,
@@ -796,7 +817,12 @@ async def _play_game_round(channel: discord.abc.Messageable, player_id: int):
         view.add_item(view.make_button(author))
 
     embed = discord.Embed(
-        description=f"**{format_author(row['author'], row['context'])}**\n“{row['text']}”",
+        description=(
+            f"**{row['author']}**"
+            + (f" — {row['context']}" if row["context"] else "")
+            + f"\n“{row['text']}”\n\n"
+            f"*Creata: {format_created_at(row['created_at'])}*"
+        ),
         color=discord.Color.blurple(),
     )
     embed.set_footer(text="Chi è l'autore?")
