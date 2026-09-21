@@ -48,12 +48,13 @@ def parse_import_data(raw: bytes, filename: str) -> list[dict]:
         required = {"quote", "author"}
         missing = required - set(reader.fieldnames)
         if missing:
-            raise ValueError(
-                "Il CSV deve contenere le colonne: quote, author."
-            )
+            raise ValueError("Il CSV deve contenere le colonne: quote, author.")
         return [
-            {key.strip(): (value.strip() if value is not None else None)
-             for key, value in row.items() if key is not None}
+            {
+                key.strip(): (value.strip() if value is not None else None)
+                for key, value in row.items()
+                if key is not None
+            }
             for row in reader
         ]
 
@@ -87,7 +88,9 @@ async def import_entries(
 
         created_at = entry.get("created_at") or None
         secret = True if entry.get("secret") else False
-        await db.add(text, author, context, added_by, secret=secret, created_at=created_at)
+        await db.add(
+            text, author, context, added_by, secret=secret, created_at=created_at
+        )
         existing.add((text, author))
         added += 1
 
@@ -102,7 +105,9 @@ async def import_from_file(path: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Importa citazioni da un file JSON o CSV.")
+    parser = argparse.ArgumentParser(
+        description="Importa citazioni da un file JSON o CSV."
+    )
     parser.add_argument(
         "file", nargs="?", default="quotes.json", help="Percorso del file JSON"
     )
