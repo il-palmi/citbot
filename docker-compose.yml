@@ -10,4 +10,4 @@ services:
       ADMIN_ROLE_ID: ${ADMIN_ROLE_ID}
       DB_PATH: /data/quotes.db
     volumes:
-      - ./data:/data
+      - ${DATA_PATH}:/data
