@@ -10,7 +10,7 @@ import discord
 from discord.ext import commands
 
 from db import QuoteDB
-from import_quotes import import_entries, rows_to_entries
+from import_quotes import import_entries, parse_import_data, rows_to_entries
 
 PREFIX = os.getenv("BOT_PREFIX", "!")
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -310,23 +310,19 @@ async def remove_secret_quote(ctx: commands.Context, quote_id: int):
 @admin_only()
 @dm_only()
 async def import_quotes(ctx: commands.Context):
-    """Importa citazioni in blocco da un file JSON allegato al messaggio."""
+    """Importa citazioni in blocco da un file JSON o CSV allegato al messaggio."""
     if not ctx.message.attachments:
         await ctx.send(
-            "Allega un file JSON con una lista di `{quote, author, context(opzionale)}`."
+            "Allega un file JSON o CSV con quote, author e context opzionale."
         )
         return
 
     attachment = ctx.message.attachments[0]
     try:
         raw = await attachment.read()
-        entries = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        await ctx.send("Il file allegato non è un JSON valido.")
-        return
-
-    if not isinstance(entries, list):
-        await ctx.send("Il JSON deve essere una lista di citazioni.")
+        entries = parse_import_data(raw, attachment.filename or "")
+    except ValueError as exc:
+        await ctx.send(f"Formato file non valido: {exc}")
         return
 
     added, skipped = await import_entries(db, entries, str(ctx.author))

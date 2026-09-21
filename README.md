@@ -8,7 +8,7 @@ Bot per raccogliere e consultare citazioni, con database SQLite e deploy via Doc
 - `!add testo | autore | contesto` — aggiunge una citazione (il contesto è opzionale)
   Aggiungi `--nodate` alla fine per non salvare la data di creazione.
 - `!remove <id>` — rimuove una citazione per ID
-- `!import` (con un file JSON allegato al messaggio) — importa citazioni in blocco
+- `!import` (con un file JSON o CSV allegato al messaggio) — importa citazioni in blocco
 - `!export` — esporta tutte le citazioni in un file JSON (stesso formato di `!import`)
 
 **Ovunque (canali del server e DM):**
@@ -160,7 +160,7 @@ I campi sono separati da `|`:
 - **testo** e **autore** sono obbligatori
 - **contesto** è opzionale (puoi ometterlo insieme al secondo `|`)
 
-## Import in blocco da JSON
+## Import in blocco da JSON o CSV
 
 Per importare tante citazioni insieme (es. da `quotes.json`), ogni oggetto deve avere
 `quote` e `author` obbligatori e `context` opzionale:
@@ -174,9 +174,10 @@ Per importare tante citazioni insieme (es. da `quotes.json`), ogni oggetto deve 
 
 Due modi:
 
-- **Da Discord**: manda in DM al bot `!import` con il file JSON allegato (richiede
+- **Da Discord**: manda in DM al bot `!import` con il file JSON o CSV allegato (richiede
   il ruolo di amministrazione, vedi sopra).
-- **Da terminale**: `python import_quotes.py quotes.json`
+- **Da terminale**: `python import_quotes.py quotes.json` oppure
+  `python import_quotes.py quotes.csv`
 
 Le citazioni già presenti (stesso testo e autore) vengono saltate, quindi si può
 rilanciare l'import in sicurezza.
@@ -185,6 +186,14 @@ Se un oggetto JSON non contiene `created_at`, la citazione viene importata senza
 
 ```json
 { "quote": "...", "author": "..." }
+```
+
+Il CSV deve avere una riga di intestazioni con le colonne `quote`, `author`,
+`context` e, opzionalmente, `created_at`:
+
+```csv
+quote,author,context,created_at
+"...","Autore","...","2024-01-30"
 ```
 
 ## Export in blocco su JSON
