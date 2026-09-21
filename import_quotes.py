@@ -87,7 +87,7 @@ async def import_entries(
 
         created_at = entry.get("created_at") or None
         secret = True if entry.get("secret") else False
-        await db.add(text, author, context, added_by, secret=secret created_at=created_at)
+        await db.add(text, author, context, added_by, secret=secret, created_at=created_at)
         existing.add((text, author))
         added += 1
 
