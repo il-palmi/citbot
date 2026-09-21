@@ -4,6 +4,10 @@ services:
     container_name: quote-bot
     restart: unless-stopped
     environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      BOT_PREFIX: ${BOT_PREFIX:-!}
+      GUILD_ID: ${GUILD_ID}
+      ADMIN_ROLE_ID: ${ADMIN_ROLE_ID}
       DB_PATH: /data/quotes.db
     volumes:
       - ${DATA_PATH}:/data
