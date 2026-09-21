@@ -109,11 +109,11 @@ def format_created_at(created_at) -> str | None:
 def quote_embed(row) -> discord.Embed:
     author = f"**{row['author']}**"
     if row["context"]:
-        author += f" — {row['context']}"
-    description = f"{author}\n“{row['text']}”"
+        author += f" {row['context']}"
+    description = f"“{row['text']}”\n{author}"
     created_at = format_created_at(row["created_at"])
     if created_at:
-        description += f"\n\n*Creata: {created_at}*"
+        description += f"\n\n{created_at}"
     embed = discord.Embed(
         description=description,
         color=discord.Color.blurple(),
