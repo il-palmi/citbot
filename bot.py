@@ -103,7 +103,7 @@ def format_created_at(created_at) -> str | None:
             return None
     else:
         return None
-    return f"{value:%d/%m/%Y %H:%M} UTC"
+    return f"{value:%d/%m/%Y}"
 
 
 def quote_embed(row) -> discord.Embed:
