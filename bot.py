@@ -91,18 +91,18 @@ def format_author(author: str, context: str | None) -> str:
     return author
 
 
-def format_created_at(created_at) -> str:
+def format_created_at(created_at) -> str | None:
     if not created_at:
-        return "N/D"
+        return None
     if isinstance(created_at, datetime):
         value = created_at
     elif isinstance(created_at, str):
         try:
             value = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
         except ValueError:
-            return "N/D"
+            return None
     else:
-        return "N/D"
+        return None
     return f"{value:%d/%m/%Y %H:%M} UTC"
 
 
@@ -110,12 +110,12 @@ def quote_embed(row) -> discord.Embed:
     author = f"**{row['author']}**"
     if row["context"]:
         author += f" — {row['context']}"
+    description = f"{author}\n“{row['text']}”"
+    created_at = format_created_at(row["created_at"])
+    if created_at:
+        description += f"\n\n*Creata: {created_at}*"
     embed = discord.Embed(
-        description=(
-            f"{author}\n"
-            f"“{row['text']}”\n\n"
-            f"*Creata: {format_created_at(row['created_at'])}*"
-        ),
+        description=description,
         color=discord.Color.blurple(),
     )
     footer = f"Citazione #{row['id']}"
@@ -240,6 +240,9 @@ async def _resolve_authors_field(ctx: commands.Context, author_field: str) -> st
 @dm_only()
 async def add_quote(ctx: commands.Context, *, payload: str = ""):
     """Aggiunge una citazione. Formato: testo | autore | contesto(opzionale)"""
+    no_date = payload.rstrip().endswith("--nodate")
+    if no_date:
+        payload = payload.rstrip()[: -len("--nodate")].rstrip()
     parts = [p.strip() for p in payload.split("|")]
     if len(parts) < 2 or not parts[0] or not parts[1]:
         await ctx.send(
@@ -251,7 +254,13 @@ async def add_quote(ctx: commands.Context, *, payload: str = ""):
     text, author = parts[0], parts[1]
     context = parts[2] if len(parts) >= 3 and parts[2] else None
     author = await _resolve_authors_field(ctx, author)
-    qid = await db.add(text, author, context, str(ctx.author))
+    qid = await db.add(
+        text,
+        author,
+        context,
+        str(ctx.author),
+        created_at=None if no_date else QuoteDB._UNSET,
+    )
     await ctx.send(f"✅ Citazione **#{qid}** aggiunta.")
 
 
@@ -260,6 +269,9 @@ async def add_quote(ctx: commands.Context, *, payload: str = ""):
 @dm_only()
 async def add_secret_quote(ctx: commands.Context, *, payload: str = ""):
     """Aggiunge una citazione segreta. Formato: testo | autore | contesto(opzionale)"""
+    no_date = payload.rstrip().endswith("--nodate")
+    if no_date:
+        payload = payload.rstrip()[: -len("--nodate")].rstrip()
     parts = [p.strip() for p in payload.split("|")]
     if len(parts) < 2 or not parts[0] or not parts[1]:
         await ctx.send(
@@ -271,7 +283,14 @@ async def add_secret_quote(ctx: commands.Context, *, payload: str = ""):
     text, author = parts[0], parts[1]
     context = parts[2] if len(parts) >= 3 and parts[2] else None
     author = await _resolve_authors_field(ctx, author)
-    qid = await db.add(text, author, context, str(ctx.author), secret=True)
+    qid = await db.add(
+        text,
+        author,
+        context,
+        str(ctx.author),
+        secret=True,
+        created_at=None if no_date else QuoteDB._UNSET,
+    )
     await ctx.send(f"🔒 Citazione segreta **#{qid}** aggiunta.")
 
 
@@ -593,7 +612,9 @@ async def _send_list(ctx: commands.Context, rows, title: str):
             )
             value = f"“{snippet}”"
             author = format_author(row["author"], row["context"])
-            value += f"\n\n*Creata: {format_created_at(row['created_at'])}*"
+            created_at = format_created_at(row["created_at"])
+            if created_at:
+                value += f"\n\n*Creata: {created_at}*"
             embed.add_field(
                 name=f"#{row['id']} — {author}",
                 value=value,
@@ -816,15 +837,15 @@ async def _play_game_round(channel: discord.abc.Messageable, player_id: int):
     for author in options:
         view.add_item(view.make_button(author))
 
-    embed = discord.Embed(
-        description=(
-            f"**{row['author']}**"
-            + (f" — {row['context']}" if row["context"] else "")
-            + f"\n“{row['text']}”\n\n"
-            f"*Creata: {format_created_at(row['created_at'])}*"
-        ),
-        color=discord.Color.blurple(),
+    description = (
+        f"**{row['author']}**"
+        + (f" — {row['context']}" if row["context"] else "")
+        + f"\n“{row['text']}”"
     )
+    created_at = format_created_at(row["created_at"])
+    if created_at:
+        description += f"\n\n*Creata: {created_at}*"
+    embed = discord.Embed(description=description, color=discord.Color.blurple())
     embed.set_footer(text="Chi è l'autore?")
     await channel.send(embed=embed, view=view)
 

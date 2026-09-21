@@ -6,6 +6,7 @@ Bot per raccogliere e consultare citazioni, con database SQLite e deploy via Doc
 
 **Solo in chat privata (DM) con il bot:**
 - `!add testo | autore | contesto` — aggiunge una citazione (il contesto è opzionale)
+  Aggiungi `--nodate` alla fine per non salvare la data di creazione.
 - `!remove <id>` — rimuove una citazione per ID
 - `!import` (con un file JSON allegato al messaggio) — importa citazioni in blocco
 - `!export` — esporta tutte le citazioni in un file JSON (stesso formato di `!import`)
@@ -20,7 +21,7 @@ Se qualcuno prova `add`/`remove` su un canale del server, il bot cancella il mes
 e invita a usare la chat privata.
 
 `add`/`remove` sono riservati a chi ha il ruolo `ADMIN_ROLE_ID` sul server `GUILD_ID`
-(vedi `.env.example`): il bot recupera il membro dal server anche se il comando
+(vedi la configurazione delle variabili d'ambiente): il bot recupera il membro dal server anche se il comando
 arriva in DM, per poterne controllare i ruoli.
 
 ## Setup del bot su Discord
@@ -32,7 +33,7 @@ arriva in DM, per poterne controllare i ruoli.
 2. Nel menu a sinistra apri la sezione **Bot**.
    - Se non esiste già, clicca **Add Bot** / **Reset Token** e copia il **token**
      che appare (`DISCORD_TOKEN`). È un segreto: non committarlo, non condividerlo,
-     va solo nel file `.env`. Se pensi sia stato esposto, rigeneralo dalla stessa
+     impostalo solo nell'ambiente in cui avvii il bot. Se pensi sia stato esposto, rigeneralo dalla stessa
      pagina (**Reset Token**), invalida il precedente.
 3. Sempre nella sezione **Bot**, in **Privileged Gateway Intents** abilita
    **MESSAGE CONTENT INTENT** e salva. Serve perché il bot deve leggere il testo
@@ -70,11 +71,7 @@ arrivano in DM, se chi scrive ha il ruolo giusto sul server (vedi sopra "Comandi
 
 ### 4. Configura le variabili d'ambiente
 
-```bash
-cp .env.example .env
-```
-
-Apri `.env` e compila:
+Imposta manualmente le variabili nella shell da cui avvierai il bot:
 
 | Variabile        | Obbligatoria | Descrizione |
 |------------------|:---:|-------------|
@@ -87,11 +84,22 @@ Apri `.env` e compila:
 resteranno bloccati con il messaggio "comando non disponibile", perché non può
 verificare i ruoli.
 
-A questo punto puoi avviare il bot con Docker Compose (sotto) o in locale.
+Per esempio:
+
+```bash
+export DISCORD_TOKEN=il-tuo-token
+export BOT_PREFIX=!                  # opzionale, default !
+export GUILD_ID=id-del-server       # opzionale, vedi sopra
+export ADMIN_ROLE_ID=id-del-ruolo   # opzionale, vedi sopra
+export DATA_PATH=/percorso/assoluto/data
+```
+
+Mantieni questa configurazione nella shell e avvia il bot con Docker Compose (sotto)
+o in locale.
 
 ## Avvio con Docker Compose
 
-Con il file `.env` già compilato (vedi setup sopra):
+Con le variabili d'ambiente già impostate (vedi setup sopra):
 
 ```bash
 docker compose up -d --build
@@ -128,8 +136,8 @@ docker compose exec quote-bot python import_quotes.py /app/quotes.json
 
 ## Avvio locale (senza Docker)
 
-Il bot legge la configurazione dalle variabili d'ambiente (non carica `.env` da solo),
-quindi vanno esportate nella shell prima di avviarlo:
+Il bot legge la configurazione dalle variabili d'ambiente, quindi vanno impostate
+manualmente nella shell prima di avviarlo:
 
 ```bash
 pip install -r requirements.txt
@@ -140,9 +148,6 @@ export ADMIN_ROLE_ID=id-del-ruolo     # opzionale, vedi sopra
 
 python bot.py
 ```
-
-In alternativa, se hai già compilato `.env`, puoi caricarlo nella shell corrente con
-`set -a && source .env && set +a` (bash/zsh) prima di lanciare `python bot.py`.
 
 ## Formato del comando `add`
 
@@ -175,6 +180,12 @@ Due modi:
 
 Le citazioni già presenti (stesso testo e autore) vengono saltate, quindi si può
 rilanciare l'import in sicurezza.
+
+Se un oggetto JSON non contiene `created_at`, la citazione viene importata senza data:
+
+```json
+{ "quote": "...", "author": "..." }
+```
 
 ## Export in blocco su JSON
 

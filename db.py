@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS scores (
 class QuoteDB:
     """Piccolo wrapper asincrono attorno a SQLite per le citazioni."""
 
+    _UNSET = object()
+
     def __init__(self, path: Path = DB_PATH):
         self.path = Path(path)
 
@@ -48,16 +50,24 @@ class QuoteDB:
         context: str | None,
         added_by: str,
         secret: bool = False,
+        created_at=_UNSET,
     ) -> int:
         async with aiosqlite.connect(self.path) as db:
-            cur = await db.execute(
-                "INSERT INTO quotes (text, author, context, added_by, secret) VALUES (?, ?, ?, ?, ?)",
-                (text, author, context, added_by, int(secret)),
-            )
+            if created_at is self._UNSET:
+                cur = await db.execute(
+                    "INSERT INTO quotes (text, author, context, added_by, secret) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (text, author, context, added_by, int(secret)),
+                )
+            else:
+                cur = await db.execute(
+                    "INSERT INTO quotes "
+                    "(text, author, context, added_by, secret, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (text, author, context, added_by, int(secret), created_at),
+                )
             await db.commit()
             return cur.lastrowid
-
-    _UNSET = object()
 
     async def update(
         self,

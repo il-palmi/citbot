@@ -46,7 +46,7 @@ async def import_entries(
             skipped += 1
             continue
 
-        await db.add(text, author, context, added_by)
+        await db.add(text, author, context, added_by, created_at=entry.get("created_at"))
         existing.add((text, author))
         added += 1
 
