@@ -69,7 +69,7 @@ def parse_import_data(raw: bytes, filename: str) -> list[dict]:
 async def import_entries(
     db: QuoteDB, entries: list, added_by: str = "import"
 ) -> tuple[int, int]:
-    """Importa una lista di entry {quote, author, context?} già parsate. Ritorna (added, skipped)."""
+    """Importa una lista di entry {quote, author, context?, created_at? secret?} già parsate. Ritorna (added, skipped)."""
     await db.init()
     existing = await db.all_pairs()
 
@@ -86,7 +86,8 @@ async def import_entries(
             continue
 
         created_at = entry.get("created_at") or None
-        await db.add(text, author, context, added_by, created_at=created_at)
+        secret = True if entry.get("secret") else False
+        await db.add(text, author, context, added_by, secret=secret created_at=created_at)
         existing.add((text, author))
         added += 1
 
